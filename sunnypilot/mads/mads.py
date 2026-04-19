@@ -51,6 +51,16 @@ class ModularAssistiveDrivingSystem:
     if self.CP.brand in MADS_NO_ACC_MAIN_BUTTON:
       self.no_main_cruise = True
 
+    # Ford Transit MK5: no LKAS button on the wheel, and the PSCM zeros
+    # CcStat_D_Actl at standstill so cruiseState.available flickers.
+    # Treat MADS as always-engage-able (no main-button gating) and auto-
+    # fire lkasEnable every tick while disabled so it picks up as soon as
+    # the selfdrived state permits.
+    self.transit_always_steer = self.CP.carFingerprint == "FORD_TRANSIT_MK5"
+    if self.transit_always_steer:
+      self.no_main_cruise = True
+      self.allow_always = True
+
     # read params on init
     self.enabled_toggle = self.params.get_bool("Mads")
     self.main_enabled_toggle = self.params.get_bool("MadsMainCruiseAllowed")
@@ -147,6 +157,11 @@ class ModularAssistiveDrivingSystem:
       self.events.remove(EventName.speedTooLow)
       self.events.remove(EventName.cruiseDisabled)
       self.events.remove(EventName.manualRestart)
+
+    # Transit always-steer: fire lkasEnable whenever disabled so the state
+    # machine re-engages as soon as conditions permit (no button needed).
+    if self.transit_always_steer and self.state_machine.state == State.disabled:
+      self.events_sp.add(EventNameSP.lkasEnable)
 
     selfdrive_enable_events = self.events.has(EventName.pcmEnable) or self.events.has(EventName.buttonEnable)
     set_speed_btns_enable = any(be.type in SET_SPEED_BUTTONS for be in CS.buttonEvents)
